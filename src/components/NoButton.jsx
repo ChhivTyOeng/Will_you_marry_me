@@ -124,12 +124,18 @@ export default function NoButton({
     }
   }, [cardRef, yesButtonRef])
 
+  const isMovingRef = useRef(false)
+
   const handleDodge = useCallback(
     (e) => {
       if (e) {
         if (e.cancelable) e.preventDefault()
         e.stopPropagation()
       }
+
+      // Prevent multiple rapid triggers while the button is already moving
+      if (isMovingRef.current) return
+      isMovingRef.current = true
 
       // Trigger soft haptic feedback on mobile devices
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
@@ -145,6 +151,11 @@ export default function NoButton({
       setPhraseIndex((prev) => (prev + 1) % NO_PHRASES.length)
       setIsWiggling(true)
       setTimeout(() => setIsWiggling(false), 250)
+
+      // Unlock after the movement animation completes so it can cleanly move again when hovered
+      setTimeout(() => {
+        isMovingRef.current = false
+      }, 350)
 
       if (soundEnabled) {
         playBoing()
@@ -184,7 +195,7 @@ export default function NoButton({
               top: `${position.y}px`,
               zIndex: 50,
               transition:
-                'left 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.28s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                'left 0.32s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.32s cubic-bezier(0.34, 1.56, 0.64, 1)',
             }
           : { position: 'relative' }
       }
@@ -201,10 +212,7 @@ export default function NoButton({
         ref={buttonRef}
         type="button"
         onMouseEnter={handleDodge}
-        onMouseMove={handleDodge}
         onTouchStart={handleDodge}
-        onTouchMove={handleDodge}
-        onPointerDown={handleDodge}
         onClick={handleDodge}
         onFocus={handleDodge}
         className={`px-5 py-3 sm:px-6 sm:py-3.5 rounded-full font-bold text-sm sm:text-base transition-all duration-200 select-none cursor-pointer flex items-center justify-center gap-1.5 shadow-md border active:scale-90 ${
