@@ -27,34 +27,46 @@ export default function NoButton({
   const [isWiggling, setIsWiggling] = useState(false)
   const buttonRef = useRef(null)
 
-  // Calculate a safe runaway position that stays on-screen and avoids the card & Yes button
+  // Calculate a safe runaway position restricted to the center & top, and just slightly below (never deep)
   const calculateRunawayPosition = useCallback(() => {
     if (typeof window === 'undefined') return { x: 50, y: 50 }
 
     const viewportW = window.innerWidth
     const viewportH = window.innerHeight
 
-    // Button approximate dimensions with safety buffer
     const btnW = buttonRef.current?.offsetWidth || 130
     const btnH = buttonRef.current?.offsetHeight || 44
-    const margin = viewportW < 640 ? 12 : 24 // tighter margin on mobile
+    const margin = viewportW < 640 ? 12 : 24
 
-    // Bounding rectangles of forbidden elements
     const cardRect = cardRef?.current?.getBoundingClientRect()
     const yesRect = yesButtonRef?.current?.getBoundingClientRect()
 
-    // Maximum coordinates to stay strictly inside viewport
-    const maxX = Math.max(margin, viewportW - btnW - margin)
-    const maxY = Math.max(margin, viewportH - btnH - margin)
+    // Horizontal bounds: kept centered around the main card / middle region
+    const minX = cardRect
+      ? Math.max(margin, Math.min(cardRect.left - 60, viewportW * 0.08))
+      : margin
+    const maxX = cardRect
+      ? Math.min(viewportW - btnW - margin, Math.max(cardRect.right + 60 - btnW, viewportW * 0.92 - btnW))
+      : Math.max(margin, viewportW - btnW - margin)
 
-    let bestX = margin
-    let bestY = margin
+    // Vertical bounds: strictly TOP and CENTER, and "just a bit bottom" (never deep down)
+    const minY = cardRect
+      ? Math.max(24, Math.min(cardRect.top - btnH - 15, 60))
+      : 30
+
+    // Capped strictly: never go deep into the bottom of the viewport
+    const maxY = cardRect
+      ? Math.min(viewportH - btnH - 24, cardRect.bottom + 42)
+      : Math.round(viewportH * 0.58)
+
+    let bestX = minX
+    let bestY = minY
     let foundSafeSpot = false
 
-    // Attempt up to 50 random positions to find one completely clear of the card & Yes button
-    for (let i = 0; i < 50; i++) {
-      const candidateX = margin + Math.random() * (maxX - margin)
-      const candidateY = margin + Math.random() * (maxY - margin)
+    // Attempt candidate positions within this restrained top/center/slight-bottom zone
+    for (let i = 0; i < 60; i++) {
+      const candidateX = minX + Math.random() * Math.max(1, maxX - minX)
+      const candidateY = minY + Math.random() * Math.max(1, maxY - minY)
 
       const candidateRect = {
         left: candidateX,
@@ -63,15 +75,21 @@ export default function NoButton({
         bottom: candidateY + btnH,
       }
 
-      // Check overlap with card (with buffer)
+      // Check overlap with card (allow sides, top, or slightly bottom)
       let overlapsCard = false
       if (cardRect) {
-        const buffer = viewportW < 640 ? 8 : 16
+        // If it's directly in the middle body of the card (where the bouquet/text is), consider it overlapping
+        const cardInner = {
+          left: cardRect.left + 15,
+          right: cardRect.right - 15,
+          top: cardRect.top + 30,
+          bottom: cardRect.bottom - 45,
+        }
         overlapsCard = !(
-          candidateRect.right < cardRect.left - buffer ||
-          candidateRect.left > cardRect.right + buffer ||
-          candidateRect.bottom < cardRect.top - buffer ||
-          candidateRect.top > cardRect.bottom + buffer
+          candidateRect.right < cardInner.left ||
+          candidateRect.left > cardInner.right ||
+          candidateRect.bottom < cardInner.top ||
+          candidateRect.top > cardInner.bottom
         )
       }
 
@@ -94,33 +112,28 @@ export default function NoButton({
       }
     }
 
-    // Smart fallback for small mobile screens where card occupies most width
-    if (!foundSafeSpot && cardRect) {
-      const spaceAbove = cardRect.top - margin
-      const spaceBelow = viewportH - cardRect.bottom - margin
-
-      if (spaceBelow > btnH + 10 && Math.random() > 0.4) {
-        // Place comfortably below the card
-        bestY = Math.min(maxY, cardRect.bottom + 12 + Math.random() * Math.max(0, spaceBelow - btnH - 16))
-      } else if (spaceAbove > btnH + 10) {
-        // Place comfortably above the card
-        bestY = Math.max(margin, margin + Math.random() * Math.max(0, spaceAbove - btnH - 10))
+    // Smart fallback: pick a spot in the top area or just slightly below the card
+    if (!foundSafeSpot) {
+      if (cardRect) {
+        const pickTop = Math.random() > 0.4
+        if (pickTop && cardRect.top > btnH + 30) {
+          // Place in top area above card
+          bestY = Math.max(24, cardRect.top - btnH - 12)
+          bestX = Math.max(minX, Math.min(maxX, cardRect.left + Math.random() * (cardRect.width - btnW)))
+        } else {
+          // Place just a bit below the card (never deep)
+          bestY = Math.min(maxY, cardRect.bottom + 16)
+          bestX = Math.max(minX, Math.min(maxX, cardRect.left + (Math.random() > 0.5 ? 10 : cardRect.width - btnW - 10)))
+        }
       } else {
-        // Position at bottom screen corner furthest from Yes button
-        bestY = maxY
-      }
-
-      bestX = margin + Math.random() * (maxX - margin)
-
-      // Ensure never overlapping Yes button
-      if (yesRect && Math.abs(bestY - yesRect.top) < 50) {
-        bestY = bestY < viewportH / 2 ? margin : maxY
+        bestY = minY + Math.random() * (maxY - minY)
+        bestX = minX + Math.random() * (maxX - minX)
       }
     }
 
     return {
-      x: Math.round(Math.min(Math.max(margin, bestX), maxX)),
-      y: Math.round(Math.min(Math.max(margin, bestY), maxY)),
+      x: Math.round(Math.min(Math.max(margin, bestX), viewportW - btnW - margin)),
+      y: Math.round(Math.min(Math.max(20, bestY), maxY)),
     }
   }, [cardRef, yesButtonRef])
 
